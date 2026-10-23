@@ -1,0 +1,125 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum GameStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique @db.VarChar(50)
+  email        String?  @unique @db.VarChar(255)
+  passwordHash String?  @db.VarChar(255)
+  isGuest      Boolean  @default(false)
+  totalScore   Int      @default(0)
+  gamesPlayed  Int      @default(0)
+  gamesWon     Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz
+  updatedAt    DateTime @updatedAt @db.Timestamptz
+
+  // Relations
+  gamePlayers GamePlayer[]
+  drawnRounds Round[]      @relation("DrawerRounds")
+  guesses     Guess[]
+  wonGames    Game[]       @relation("GameWinner")
+  hostedGames Game[]       @relation("GameHost")
+
+  @@index([totalScore(sort: Desc)])
+  @@map("users")
+}
+
+model Game {
+  id            String     @id @default(uuid()) @db.Uuid
+  roomCode      String     @unique @db.VarChar(10)
+  status        GameStatus @default(WAITING)
+  maxPlayers    Int        @default(8) @db.SmallInt
+  totalRounds   Int        @default(3) @db.SmallInt
+  roundDuration Int        @default(80) @db.SmallInt // seconds
+  hostId        String?    @db.Uuid
+  winnerId      String?    @db.Uuid
+  startedAt     DateTime?  @db.Timestamptz
+  endedAt       DateTime?  @db.Timestamptz
+  createdAt     DateTime   @default(now()) @db.Timestamptz
+  updatedAt     DateTime   @updatedAt @db.Timestamptz
+
+  // Relations
+  host    User?        @relation("GameHost", fields: [hostId], references: [id], onDelete: SetNull)
+  winner  User?        @relation("GameWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  players GamePlayer[]
+  rounds  Round[]
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("games")
+}
+
+model GamePlayer {
+  id       String    @id @default(uuid()) @db.Uuid
+  gameId   String    @db.Uuid
+  userId   String    @db.Uuid
+  score    Int       @default(0)
+  rank     Int?      @db.SmallInt
+  isHost   Boolean   @default(false)
+  joinedAt DateTime  @default(now()) @db.Timestamptz
+  leftAt   DateTime? @db.Timestamptz
+
+  // Relations
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+  @@index([gameId])
+  @@index([userId])
+  @@map("game_players")
+}
+
+model Round {
+  id              String    @id @default(uuid()) @db.Uuid
+  gameId          String    @db.Uuid
+  roundNumber     Int       @db.SmallInt
+  drawerId        String    @db.Uuid
+  secretWord      String    @db.VarChar(100)
+  hint            String?   @db.VarChar(100)
+  durationSeconds Int       @default(80) @db.SmallInt
+  startedAt       DateTime  @default(now()) @db.Timestamptz
+  endedAt         DateTime? @db.Timestamptz
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+
+  // Relations
+  game    Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  drawer  User    @relation("DrawerRounds", fields: [drawerId], references: [id], onDelete: Cascade)
+  guesses Guess[]
+
+  @@unique([gameId, roundNumber])
+  @@index([gameId])
+  @@index([drawerId])
+  @@map("rounds")
+}
+
+model Guess {
+  id            String   @id @default(uuid()) @db.Uuid
+  roundId       String   @db.Uuid
+  userId        String   @db.Uuid
+  guessText     String   @db.VarChar(255)
+  isCorrect     Boolean  @default(false)
+  pointsAwarded Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  round Round @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roundId])
+  @@index([userId])
+  @@index([roundId, isCorrect])
+  @@map("guesses")
+}
